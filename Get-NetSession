@@ -1,0 +1,109 @@
+function Get-NetSession {
+<#
+.SYNOPSIS
+Returns session information for the local (or a remote) machine.
+Author: Will Schroeder (@harmj0y)  
+License: BSD 3-Clause  
+Required Dependencies: PSReflect, Invoke-UserImpersonation, Invoke-RevertToSelf  
+.DESCRIPTION
+This function will execute the NetSessionEnum Win32API call to query
+a given host for active sessions.
+.PARAMETER ComputerName
+Specifies the hostname to query for sessions (also accepts IP addresses).
+Defaults to 'localhost'.
+.PARAMETER Credential
+A [Management.Automation.PSCredential] object of alternate credentials
+for connection to the remote system using Invoke-UserImpersonation.
+.EXAMPLE
+Get-NetSession
+Returns active sessions on the local host.
+.EXAMPLE
+Get-NetSession -ComputerName sqlserver
+Returns active sessions on the 'sqlserver' host.
+.EXAMPLE
+Get-DomainController | Get-NetSession
+Returns active sessions on all domain controllers.
+.EXAMPLE
+$SecPassword = ConvertTo-SecureString 'Password123!' -AsPlainText -Force
+$Cred = New-Object System.Management.Automation.PSCredential('TESTLAB\dfm.a', $SecPassword)
+Get-NetSession -ComputerName sqlserver -Credential $Cred
+.OUTPUTS
+PowerView.SessionInfo
+A PSCustomObject representing a WKSTA_USER_INFO_1 structure, including
+the CName/UserName/Time/IdleTime for each session, with the ComputerName added.
+.LINK
+http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
+#>
+
+    [OutputType('PowerView.SessionInfo')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
+        [Alias('HostName', 'dnshostname', 'name')]
+        [ValidateNotNullOrEmpty()]
+        [String[]]
+        $ComputerName = 'localhost',
+
+        [Management.Automation.PSCredential]
+        [Management.Automation.CredentialAttribute()]
+        $Credential = [Management.Automation.PSCredential]::Empty
+    )
+
+    BEGIN {
+        if ($PSBoundParameters['Credential']) {
+            $LogonToken = Invoke-UserImpersonation -Credential $Credential
+        }
+    }
+
+    PROCESS {
+        ForEach ($Computer in $ComputerName) {
+            # arguments for NetSessionEnum
+            $QueryLevel = 10
+            $PtrInfo = [IntPtr]::Zero
+            $EntriesRead = 0
+            $TotalRead = 0
+            $ResumeHandle = 0
+
+            # get session information
+            $Result = $Netapi32::NetSessionEnum($Computer, '', $UserName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
+
+            # locate the offset of the initial intPtr
+            $Offset = $PtrInfo.ToInt64()
+
+            # 0 = success
+            if (($Result -eq 0) -and ($Offset -gt 0)) {
+
+                # work out how much to increment the pointer by finding out the size of the structure
+                $Increment = $SESSION_INFO_10::GetSize()
+
+                # parse all the result structures
+                for ($i = 0; ($i -lt $EntriesRead); $i++) {
+                    # create a new int ptr at the given offset and cast the pointer as our result structure
+                    $NewIntPtr = New-Object System.Intptr -ArgumentList $Offset
+                    $Info = $NewIntPtr -as $SESSION_INFO_10
+
+                    # return all the sections of the structure - have to do it this way for V2
+                    $Session = $Info | Select-Object *
+                    $Session | Add-Member Noteproperty 'ComputerName' $Computer
+                    $Session.PSObject.TypeNames.Insert(0, 'PowerView.SessionInfo')
+                    $Offset = $NewIntPtr.ToInt64()
+                    $Offset += $Increment
+                    $Session
+                }
+
+                # free up the result buffer
+                $Null = $Netapi32::NetApiBufferFree($PtrInfo)
+            }
+            else {
+                Write-Verbose "[Get-NetSession] Error: $(([ComponentModel.Win32Exception] $Result).Message)"
+            }
+        }
+    }
+
+
+    END {
+        if ($LogonToken) {
+            Invoke-RevertToSelf -TokenHandle $LogonToken
+        }
+    }
+}
