@@ -289,13 +289,6 @@ Function Get-TierZeroServicePrincipals {
         $TierZeroServicePrincipals += $TierZeroServicePrincipal
     }
     
-    $PartnerTier2Support | select -expand principal | ?{$_.'@odata.type' -Like "#microsoft.graph.servicePrincipal"} | %{
-        $TierZeroServicePrincipal = New-Object PSObject -Property @{
-            ServicePrincipalID    = $_.id
-            TierZeroPrivilege     = "Partner Tier2 Support"
-        }
-        $TierZeroServicePrincipals += $TierZeroServicePrincipal
-    }
     
     $MGAppRoles | ?{$_.appRoleId -Like "9e3f62cf-ca93-4989-b6ce-bf83c28f9fe8" -And $_.principalType -Like "ServicePrincipal"} | %{
         $TierZeroServicePrincipal = New-Object PSObject -Property @{
