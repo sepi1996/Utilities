@@ -385,6 +385,30 @@ Function Get-TierZeroServicePrincipals {
         }
         $TierZeroServicePrincipals += $TierZeroServicePrincipal
     }
+
+    $MGAppRoles | ?{$_.appRoleId -Like "62a82d76-70ea-41e2-9197-370581804d09" -And $_.principalType -Like "ServicePrincipal"} | %{
+        $TierZeroServicePrincipal = New-Object PSObject -Property @{
+            ServicePrincipalID    = $_.principalId
+            TierZeroPrivilege     = "MS Graph App Role: Group.ReadWrite.All"
+        }
+        $TierZeroServicePrincipals += $TierZeroServicePrincipal
+    }
+
+    $MGAppRoles | ?{$_.appRoleId -Like "Dbaae8cf-10b5-4b86-a4a1-f871c94c6695" -And $_.principalType -Like "ServicePrincipal"} | %{
+        $TierZeroServicePrincipal = New-Object PSObject -Property @{
+            ServicePrincipalID    = $_.principalId
+            TierZeroPrivilege     = "MS Graph App Role: GroupMember.ReadWrite.All"
+        }
+        $TierZeroServicePrincipals += $TierZeroServicePrincipal
+    }
+
+    $MGAppRoles | ?{$_.appRoleId -Like "89c8469c-83ad-45f7-8ff2-6e3d4285709e" -And $_.principalType -Like "ServicePrincipal"} | %{
+        $TierZeroServicePrincipal = New-Object PSObject -Property @{
+            ServicePrincipalID    = $_.principalId
+            TierZeroPrivilege     = "MS Graph App Role: ServicePrincipalEndpoint.ReadWrite.All"
+        }
+        $TierZeroServicePrincipals += $TierZeroServicePrincipal
+    }
     
     $TierZeroServicePrincipals
 }
